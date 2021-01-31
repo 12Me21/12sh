@@ -41,6 +41,7 @@ DictNode* Dict_remove(Dict* tb, Str key) {
 	DictNode* prev = NULL;
 	for (; node; prev = node, node = node->bnext)
 		if (strcmp(node->key, key)==0) {
+			tb->items--;
 			// remove from bucket
 			if (prev)
 				prev->bnext = node->bnext;
@@ -84,6 +85,7 @@ Dict* Dict_init(BucketIndex buckets, DictNode* items) {
 	Dict* new = Dict_new(buckets);
 	new->shead = items;
 	for (; items->key; items++) {
+		new->items++;
 		BucketIndex index = hash(new, items->key);
 		
 		items->bnext = new->buckets[index];
