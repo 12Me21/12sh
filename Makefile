@@ -2,7 +2,7 @@ CFLAGS?= -Wextra -Wall -g
 # libs to include when linking (with -l<name> flags)
 libs:= readline curses
 # c source code files
-srcs:= main dict
+srcs:= main dict parse
 output:= 12sh
 # location for intermediate files (.o and .mk)
 junkdir:= .junk
