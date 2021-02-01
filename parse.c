@@ -24,7 +24,7 @@ Str* parseLine(Str line) {
 		return (c = *++line);
 	}
 	while (c) {
-		if (c == '$') {
+		if (quote != '\'' && c == '$') {
 			varnamePos = varname;
 			while (isalnum(scan())) {
 				*varnamePos++ = c;
@@ -36,6 +36,21 @@ Str* parseLine(Str line) {
 				memcpy(pos, item->value, len);
 				pos += len;
 			}
+		} else if (quote != '\'' && c == '\\') {
+			scan();
+			switch (c) {
+			when('\0'): goto end;
+			when('n'): *pos++ = '\n';
+			when('e'): *pos++ = '\033';
+			when('t'): *pos++ = '\t';
+			when('b'): *pos++ = '\b';
+			when('f'): *pos++ = '\f';
+			when('r'): *pos++ = '\r';
+			when('a'): *pos++ = '\a';
+			otherwise:
+				*pos++ = c;	
+			}
+			scan();
 		} else if (quote) {
 			if (c == quote)
 				quote = 0;
@@ -54,6 +69,7 @@ Str* parseLine(Str line) {
 			scan();
 		}
 	}
+ end:
 	finishArg();
 	*argpos = NULL;
 	return args;
