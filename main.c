@@ -1,12 +1,16 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #include <signal.h>
+#include <sys/types.h>
+#include <termios.h>
+#include <unistd.h>
 
 #include "types.h"
 #include "dict.h"
 #include "parse.h"
 #include "run.h"
 #include "term.h"
+#include "job.c"
 extern Str* environ;
 
 Dict* env;
@@ -23,6 +27,10 @@ void handleSignal(int num) {
 		signalMsg = "SIGINT";
 	else
 		signalMsg = "signal?";
+	if (num==SIGCHLD) {
+		//puts("CHLD");
+		//xdoJobNotification();
+	}
 }
 
 Dict* makeEnvDict(Str* envp) {
@@ -66,19 +74,22 @@ Str updatePrompt(Dict* env) {
 }
 
 int main(int argc, Str* argv) {
+	initShell();
 	struct sigaction new_action;
 	new_action.sa_handler = handleSignal;
 	sigemptyset(&new_action.sa_mask);
 	new_action.sa_flags = 0;
+	
 	sigaction(SIGINT, &new_action, NULL);
 	sigaction(SIGHUP, &new_action, NULL);
 	sigaction(SIGTSTP, &new_action, NULL);
-	//tcgetattr(0, &saneAttr);
+
 	terminfo_init();
 	(void)argc;
 	(void)argv;
 	env = makeEnvDict(environ);
 	Dict_add(env, "PS1")->value = strdup("\1\033[0;1;38;5;22m\2$USER\1\033[m\2:\1\033[1;34m\2$PWD\1\033[m\2\\$\\ ");
+	signal(SIGCHLD, SIG_DFL);
 	while (1) {
 		if (signalMsg) {
 			puts(signalMsg);
@@ -95,19 +106,26 @@ int main(int argc, Str* argv) {
 		if (args[0]) {
 			if (!strcmp(args[0], "exit")) {
 				break;
-			} if (!strcmp(args[0], "set")) {
+			} else if (!strcmp(args[0], "set")) {
 				Dict_add(env, args[1])->value = strdup(args[2]);
+			} else if (!strcmp(args[0], "fg")) {
+				putJobInForeground(firstJob, true);
 			} else {
 				Str path;
 				int err = lookupCommand(args[0], Dict_get(env, "PATH")->value, &path);
 				switch (err) {
-				when(0):
-					execute(path, args);
+				when(0):;
+					Job* job = simpleJob(args);
+					launchJob(job, true);
+					//execute(path, args);
 				otherwise:
 					printf("Command '%s' not found\n", args[0]);
 				}
 			}
 		}
+		signal(SIGCHLD, SIG_IGN);
+		doJobNotification();
+		signal(SIGCHLD, SIG_DFL);
 		free(line);
 		freeArgs(args);
 	}

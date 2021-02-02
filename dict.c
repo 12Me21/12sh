@@ -120,3 +120,13 @@ Dict* Dict_init(BucketIndex buckets, DictNode* items) {
 	}
 	return new;
 }
+/*
+				int i;
+				for (i=0; i<env->size; i++) {
+					printf("[");
+					DictNode* node = env->buckets[i];
+					for (; node; node=node->bnext) {
+						printf("*");
+					}
+					printf("]\n");
+					}*/
