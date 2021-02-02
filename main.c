@@ -1,22 +1,28 @@
 #include <readline/readline.h>
 #include <readline/history.h>
-#include <term.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <termios.h>
-#include <errno.h>
+#include <signal.h>
 
 #include "types.h"
 #include "dict.h"
 #include "parse.h"
 #include "run.h"
+#include "term.h"
 extern Str* environ;
 
 Dict* env;
 
 Str strcpy2(Str dest, Str src) {
-	while (*dest++ = *src++);
+	while ((*dest++ = *src++));
 	return dest;
+}
+
+Str signalMsg = NULL;
+
+void handleSignal(int num) {
+	if (num==SIGINT)
+		signalMsg = "SIGINT";
+	else
+		signalMsg = "signal?";
 }
 
 Dict* makeEnvDict(Str* envp) {
@@ -29,9 +35,10 @@ Dict* makeEnvDict(Str* envp) {
 			value = strdup(sep+1);
 		} else {
 			name = strdup(*envp);
-			value = "";
+			value = strdup(""); //eh
 		}
 		Dict_add(new, name)->value = value;
+		free(name);
 	}
 	return new;
 }
@@ -40,120 +47,56 @@ Str updatePrompt(Dict* env) {
 	static Char prompt[1024];
 	Str promptPos = prompt;
 	Str ps1 = Dict_get(env, "PS1")->value;
-	Str* args = parseLine(ps1);
-	for (; *args; args++) {
-		Str arg = *args;
-		for (; *arg; arg++) {
-			char c = *arg;
-			if (c=='%') {
-				c = *++arg;
-				switch (c) {
-				when('\0'):
-					goto end;
-				when('%'):
-					*promptPos++ = '%';
-				when('['):
-					*promptPos++ = RL_PROMPT_START_IGNORE;
-				when(']'):
-					*promptPos++ = RL_PROMPT_END_IGNORE;
-				when('$'):
-					*promptPos++ = '$';
-				otherwise:
-					*promptPos++ = '%';
-					*promptPos++ = c;
-				}
-			} else {
-				*promptPos++ = c;
-			}
+	Str* args = parseLine(ps1, false);
+	Str arg = args[0];
+	for (; *arg; arg++) {
+		char c = *arg;
+		switch (c) {
+		when('\1'):
+			c = RL_PROMPT_START_IGNORE;
+		when('\2'):
+			c = RL_PROMPT_END_IGNORE;
 		}
-	end:;
+		*promptPos++ = c;
 	}
- 
-	/*Str pwd = Dict_get(env, "PWD")->value;
-	Str user = Dict_get(env, "USER")->value;
-	snprintf(prompt, sizeof(prompt)-1, "%c%s%c%s%c%s%c:%c%s%c%s%c%s%c$%c%s%c ",
-		RL_PROMPT_START_IGNORE, "\033[0;1;38;5;22m", RL_PROMPT_END_IGNORE,
-		user,
-		RL_PROMPT_START_IGNORE, "\033[m", RL_PROMPT_END_IGNORE,
-		RL_PROMPT_START_IGNORE, "\033[1;34m", RL_PROMPT_END_IGNORE,
-		pwd,
-		RL_PROMPT_START_IGNORE, "\033[m", RL_PROMPT_END_IGNORE,
-		RL_PROMPT_START_IGNORE, "\033[m", RL_PROMPT_END_IGNORE
-		);*/
+	*promptPos++ = '\0';
+	freeArgs(args);
+	
 	return prompt;
-}
-// "\[\033[0;1;38;5;22m]\]\u\[\033[m\]:\[\033[1;34m\]\w\[\033[m\]\$ "
-
-void cursor_position(int* x, int* y) {
-	static Str query;
-	if (!query)
-		query = tigetstr("u7");
-	if (!query) {
-		*x = *y = -1;
-		return;
-	}
-
-	struct termios attr, backup;
-	tcgetattr(0, &attr);
-	backup = attr;
-	/* Disable ICANON, ECHO, and CREAD. */
-	attr.c_lflag &= ~(ICANON | ECHO | CREAD);
-	tcsetattr(0, TCSAFLUSH, &attr);
-
-	/* Request cursor coordinates from the terminal. */
-	fputs(query, stdout);
-	scanf("\033[%d;%dR", x, y); //todo: u6
-
-	tcsetattr(0, TCSAFLUSH, &backup);
-
-	// TODO:
-	// set terminal settings to something sane before printing prompt
-}
-
-Str setf, setb;
-void color(int f, int b) {
-	putp(tiparm(setf, f));
-	putp(tiparm(setb, b));
-}
-
-// called before readline prompt is displayed
-// ensures that the cursor is in column 1
-// prints \n if the last program's output didn't leave the cursor in col 1
-int beforePrompt(void) {
-	static Str op;
-	if (!op)
-		op = tigetstr("op");
-	int y, x;
-	cursor_position(&y, &x);
-	if (x>1) {
-		color(3+8, 0);
-		putchar('%');
-		putp(op);
-		putchar('\n');
-	}
-	putchar('\r');
-	return 0;
 }
 
 int main(int argc, Str* argv) {
+	struct sigaction new_action;
+	new_action.sa_handler = handleSignal;
+	sigemptyset(&new_action.sa_mask);
+	new_action.sa_flags = 0;
+	sigaction(SIGINT, &new_action, NULL);
+	sigaction(SIGHUP, &new_action, NULL);
+	sigaction(SIGTSTP, &new_action, NULL);
+	//tcgetattr(0, &saneAttr);
+	terminfo_init();
 	(void)argc;
 	(void)argv;
 	env = makeEnvDict(environ);
-	setupterm(NULL, 1, NULL);
-	rl_startup_hook = beforePrompt;
-	setf = tigetstr("setaf");
-	setb = tigetstr("setab");
-	Dict_add(env, "PS1")->value = "%[\033[0;1;38;5;22m%]$USER%[\033[m%]:%[\033[1;34m%]$PWD%[\033[m%]%\\$\\ ";
+	Dict_add(env, "PS1")->value = strdup("\1\033[0;1;38;5;22m\2$USER\1\033[m\2:\1\033[1;34m\2$PWD\1\033[m\2\\$\\ ");
 	while (1) {
+		if (signalMsg) {
+			puts(signalMsg);
+			signalMsg = NULL;
+		}
 		// make sure cursor didn't end up at the start of a row
+		beforePrompt();
 		Str line = readline(updatePrompt(env));
+		signalMsg = NULL;
 		if (!line)
 			break;
 		add_history(line);
-		Str* args = parseLine(line);
+		Str* args = parseLine(line, true);
 		if (args[0]) {
-			if (!strcmp(args[0], "unset")) {
-				Dict_remove(env, args[1]);
+			if (!strcmp(args[0], "exit")) {
+				break;
+			} if (!strcmp(args[0], "set")) {
+				Dict_add(env, args[1])->value = strdup(args[2]);
 			} else {
 				Str path;
 				int err = lookupCommand(args[0], Dict_get(env, "PATH")->value, &path);
@@ -161,11 +104,14 @@ int main(int argc, Str* argv) {
 				when(0):
 					execute(path, args);
 				otherwise:
-					puts("oh no!");
+					printf("Command '%s' not found\n", args[0]);
 				}
 			}
 		}
+		free(line);
+		freeArgs(args);
 	}
-	printf("\n");
+	printf("exit\n");
+	Dict_free(env);
 	return 0;
 }

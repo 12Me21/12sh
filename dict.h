@@ -26,3 +26,4 @@ DictNode* Dict_get(Dict* tb, Str key);
 DictNode* Dict_add(Dict* tb, Str key);
 Dict* Dict_new(BucketIndex x);
 DictNode* Dict_remove(Dict* tb, Str key);
+void Dict_free(Dict*);

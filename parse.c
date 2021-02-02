@@ -2,10 +2,16 @@
 
 #include "types.h"
 #include "dict.h"
+#include <stdio.h>
 
 extern Dict* env;
 
-Str* parseLine(Str line) {
+void freeArgs(Str* args) {
+	for (; *args; args++)
+		free(*args);
+}
+
+Str* parseLine(Str line, Bool multi) {
 	static Char temp[1024];
 	Char* pos = temp;
 	static Str args[256];
@@ -29,17 +35,23 @@ Str* parseLine(Str line) {
 			while (isalnum(scan())) {
 				*varnamePos++ = c;
 			}
-			*varnamePos = '\0';
-			DictNode* item = Dict_get(env, varname);
-			if (item) {
-				Index len = strlen(item->value);
-				memcpy(pos, item->value, len);
-				pos += len;
+			if (varnamePos == varname) {
+				*pos++ = '$';
+			} else {
+				*varnamePos = '\0';
+				DictNode* item = Dict_get(env, varname);
+				if (item) {
+					Index len = strlen(item->value);
+					memcpy(pos, item->value, len);
+					pos += len;
+				}
 			}
 		} else if (quote != '\'' && c == '\\') {
 			scan();
 			switch (c) {
 			when('\0'): goto end;
+			when('1'): *pos++ = '\1';
+			when('2'): *pos++ = '\2';
 			when('n'): *pos++ = '\n';
 			when('e'): *pos++ = '\033';
 			when('t'): *pos++ = '\t';
@@ -48,7 +60,7 @@ Str* parseLine(Str line) {
 			when('r'): *pos++ = '\r';
 			when('a'): *pos++ = '\a';
 			otherwise:
-				*pos++ = c;	
+				*pos++ = c;
 			}
 			scan();
 		} else if (quote) {
@@ -57,17 +69,23 @@ Str* parseLine(Str line) {
 			else
 				*pos++ = c;
 			scan();
-		} else {
-			switch (c) {
+		} else switch (c) {
 			when('"' orwhen '\''):
 				quote = c;
 			when(' '):
-				finishArg();
+				if (multi) {
+					finishArg();
+					do {
+						scan();
+					} while (c == ' ');
+				} else {
+					*pos++ = c;
+					scan();
+				}
 			otherwise:
 				*pos++ = c;
+				scan();
 			}
-			scan();
-		}
 	}
  end:
 	finishArg();

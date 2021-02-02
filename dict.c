@@ -1,6 +1,14 @@
 #include "dict.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
+
+// todo: make memory management better
+// ideas:
+// - all items in dict are malloced/freed by dict
+///  problem: directly setting node->value not allowed. also inefficient
+// - flag to track which items are managed by dict
+//   problem: now other programs may have to free some stuff and nnnX
 
 Dict* Dict_new(BucketIndex size) {
 	Dict* new = malloc(sizeof(Dict));
@@ -16,6 +24,20 @@ Dict* Dict_new(BucketIndex size) {
 	new->stail = NULL;
 	
 	return new;
+}
+
+void Dict_free(Dict* dict) {
+	DictNode* node;
+	for (node=dict->shead; node; ) {
+		//printf("freed %s\n", node->key);
+		free(node->key);
+		free(node->value);
+		DictNode* prev = node;
+		node = node->snext;
+		free(prev);
+	}
+	free(dict->buckets);
+	free(dict);
 }
 
 static BucketIndex hash(Dict* dict, Str str){
@@ -67,7 +89,7 @@ DictNode* Dict_add(Dict* tb, Str key) {
 	tb->items++;
 	// Add to bucket
 	node->bnext = tb->buckets[index];
-	node->key = key;
+	node->key = strdup(key);
 	tb->buckets[index] = node;
 	// Add to end of sorted list
 	node->snext = NULL;

@@ -9,8 +9,10 @@
 extern Dict* env;
 
 static void freeEnv(Str* envp) {
-	for (; *envp; envp++)
-		free(*envp);
+	Str* x = envp;
+	for (; *x; x++)
+		free(*x);
+	free(envp);
 }
 
 static Str* makeEnvCopy(Dict* env) {
@@ -32,20 +34,19 @@ static Str* makeEnvCopy(Dict* env) {
 }
 
 int execute(Str path, Str* args) {
-	Str* envp = makeEnvCopy(env);
-
 	pid_t parchild = fork();
 	if (parchild < 0)
 		return (-1);
 
 	int status;
 	if (parchild == 0) {
+		Str* envp = makeEnvCopy(env);
 		status = execve(path, args, envp);
+		freeEnv(envp);
 		_exit(status);
 	}
 	
 	wait(&status);
-	freeEnv(envp);
 
 	return WEXITSTATUS(status);
 }
