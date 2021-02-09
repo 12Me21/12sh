@@ -1,8 +1,9 @@
 #include <ctype.h>
+#include <stdio.h>
 
 #include "types.h"
 #include "dict.h"
-#include <stdio.h>
+#include "parse.h"
 
 extern Dict* env;
 
@@ -39,10 +40,10 @@ Str* parseLine(Str line, Bool multi) {
 				*pos++ = '$';
 			} else {
 				*varnamePos = '\0';
-				DictNode* item = Dict_get(env, varname);
+				Str* item = Dict_get(env, varname);
 				if (item) {
-					Index len = strlen(item->value);
-					memcpy(pos, item->value, len);
+					Index len = strlen(*item);
+					memcpy(pos, *item, len);
 					pos += len;
 				}
 			}

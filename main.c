@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <readline/readline.h>
 #include <readline/history.h>
 #include <signal.h>
@@ -39,13 +40,13 @@ Dict* makeEnvDict(Str* envp) {
 		Str name, value;
 		Str sep = strchr(*envp, '=');
 		if (sep) {
-			name = strndup(*envp, sep-*envp);
-			value = strdup(sep+1);
+			name = strndup(*envp, sep-*envp) CRITICAL;
+			value = strdup(sep+1) CRITICAL;
 		} else {
-			name = strdup(*envp);
-			value = strdup(""); //eh
+			name = strdup(*envp) CRITICAL;
+			value = strdup("") CRITICAL; //eh
 		}
-		Dict_add(new, name)->value = value;
+		*(Str*)Dict_add(new, name) = value;
 		free(name);
 	}
 	return new;
@@ -54,7 +55,7 @@ Dict* makeEnvDict(Str* envp) {
 Str updatePrompt(Dict* env) {
 	static Char prompt[1024];
 	Str promptPos = prompt;
-	Str ps1 = Dict_get(env, "PS1")->value;
+	Str ps1 = *(Str*)(Dict_get(env, "PS1")?:&"$ ");
 	Str* args = parseLine(ps1, false);
 	Str arg = args[0];
 	for (; *arg; arg++) {
@@ -73,23 +74,28 @@ Str updatePrompt(Dict* env) {
 	return prompt;
 }
 
+Str getLine() {
+	return readline(updatePrompt(env));
+}
+
 int main(int argc, Str* argv) {
+	(void)argc;
+	(void)argv;
 	initShell();
+	signal(SIGCHLD, SIG_DFL);
+	
 	struct sigaction new_action;
 	new_action.sa_handler = handleSignal;
 	sigemptyset(&new_action.sa_mask);
 	new_action.sa_flags = 0;
-	
 	sigaction(SIGINT, &new_action, NULL);
 	sigaction(SIGHUP, &new_action, NULL);
 	sigaction(SIGTSTP, &new_action, NULL);
 
 	terminfo_init();
-	(void)argc;
-	(void)argv;
 	env = makeEnvDict(environ);
-	Dict_add(env, "PS1")->value = strdup("\1\033[0;1;38;5;22m\2$USER\1\033[m\2:\1\033[1;34m\2$PWD\1\033[m\2\\$\\ ");
-	signal(SIGCHLD, SIG_DFL);
+	*(Str*)Dict_add(env, "PS1") = strdup("\1\033[0;1;38;5;22m\2$USER\1\033[m\2:\1\033[1;34m\2$PWD\1\033[m\2\\$\\ ") CRITICAL;
+	
 	while (1) {
 		if (signalMsg) {
 			puts(signalMsg);
@@ -97,26 +103,34 @@ int main(int argc, Str* argv) {
 		}
 		// make sure cursor didn't end up at the start of a row
 		beforePrompt();
-		Str line = readline(updatePrompt(env));
+		Str line = getLine();
 		signalMsg = NULL;
 		if (!line)
 			break;
 		add_history(line);
 		Str* args = parseLine(line, true);
+		Str* argEnd = args;
+		for (; *argEnd; argEnd++) {}
+		argEnd--;
 		if (args[0]) {
 			if (!strcmp(args[0], "exit")) {
 				break;
 			} else if (!strcmp(args[0], "set")) {
-				Dict_add(env, args[1])->value = strdup(args[2]);
+				*(Str*)Dict_add(env, args[1]) = strdup(args[2]) CRITICAL;
 			} else if (!strcmp(args[0], "fg")) {
 				putJobInForeground(firstJob, true);
 			} else {
 				Str path;
-				int err = lookupCommand(args[0], Dict_get(env, "PATH")->value, &path);
+				int err = lookupCommand(args[0], *(Str*)(Dict_get(env, "PATH")?:&""), &path);
+				Bool bg = strcmp(*argEnd,"&")==0;
+				if (bg) {
+					free(*argEnd);
+					*argEnd = NULL;
+				}
 				switch (err) {
 				when(0):;
 					Job* job = simpleJob(args);
-					launchJob(job, true);
+					launchJob(job, !bg);
 					//execute(path, args);
 				otherwise:
 					printf("Command '%s' not found\n", args[0]);

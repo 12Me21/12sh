@@ -5,8 +5,8 @@ typedef unsigned int BucketIndex;
 struct DictNode;
 
 typedef struct DictNode {
+	void* _value;
 	Str key;
-	Str value;
 	struct DictNode* bnext;
 	struct DictNode* snext;
 	struct DictNode* sprev;
@@ -22,7 +22,7 @@ typedef struct {
 } Dict;
 
 Dict* Dict_init(BucketIndex buckets, DictNode* items);
-DictNode* Dict_get(Dict* tb, Str key);
+void* Dict_get(Dict*, Str);
 DictNode* Dict_add(Dict* tb, Str key);
 Dict* Dict_new(BucketIndex x);
 DictNode* Dict_remove(Dict* tb, Str key);

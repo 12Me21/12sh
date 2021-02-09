@@ -3,6 +3,8 @@ output:= 12sh
 
 libs:= readline curses
 
-CFLAGS+= -Wextra -Wall -g -ftabstop=3 -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -Wno-unused-but-set-variable
+LD_LIBRARY_PATH=/usr/local/lib
+
+CFLAGS+= -Wextra -Wall -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -Wno-unused-but-set-variable -Werror=implicit-function-declaration -g -ftabstop=3
 
 include Nice.mk

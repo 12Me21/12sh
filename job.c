@@ -6,33 +6,34 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 Termios shellTmodes;
 Pid shellPgid;
 Job* firstJob = NULL;
 Bool shellInteractive;
-
-#define NEW(name) name = malloc(sizeof(*name)); *name = (typeof(*name))
+Fd ignore;
 
 Job* simpleJob(Str* argv) {
-	Process* NEW(process){
+	Process* ALLOCI(process,
 		.next= NULL,
 		.argv= argv,
 		.pid= 0,
 		.completed = 0,
 		.stopped = 0,
 		.status = 0,
-	};
-	Job* NEW(job){
+	);
+	Job* ALLOCI(job,
 		.next = firstJob,
-		.command = strdup(argv[0]),
+		.command = strdup(argv[0]) CRITICAL,
 		.pgid = 0,
 		.notified = false,
 		.stdin = 0,
 		.stdout = 1,
 		.stderr = 2,
 		.first_process = process,
-	};
+	);
+	tcgetattr(0, &job->tmodes);
 	firstJob = job;
 	return job;
 }
@@ -136,7 +137,7 @@ void putJobInBackground(Job* j, Bool cont) {
   /* Send the job a continue signal, if necessary.  */
 	if (cont)
 		if (kill(-(j->pgid), SIGCONT) < 0)
-			perror ("kill (SIGCONT)");
+			perror("kill (SIGCONT)");
 }
 
 void putJobInForeground(Job* j, Bool cont) {
@@ -180,19 +181,25 @@ void launchProcess(Process* p, Pid pgid, Fd infile, Fd outfile, Fd errfile, Bool
 		signal(SIGCHLD, SIG_DFL);
 	}
 
-	// Set the standard input/output channels of the new process.
-	if (infile != STDIN_FILENO) {
-		dup2(infile, STDIN_FILENO);
-		close(infile);
-	}
-	if (outfile != STDOUT_FILENO) {
-		dup2(outfile, STDOUT_FILENO);
-		close(outfile);
-	}
-	if (errfile != STDERR_FILENO) {
-		dup2(errfile, STDERR_FILENO);
-		close(errfile);
-	}
+	//if (foreground) {
+		// Set the standard input/output channels of the new process.
+		if (infile != STDIN_FILENO) {
+			dup2(infile, STDIN_FILENO);
+			close(infile);
+		}
+		if (outfile != STDOUT_FILENO) {
+			dup2(outfile, STDOUT_FILENO);
+			close(outfile);
+		}
+		if (errfile != STDERR_FILENO) {
+			dup2(errfile, STDERR_FILENO);
+			close(errfile);
+		}
+		/*	} else {
+		dup2(ignore, STDIN_FILENO);
+		dup2(ignore, STDOUT_FILENO);
+		dup2(ignore, STDERR_FILENO);
+		}*/
 
 	// Exec the new process.  Make sure we exit.
 	execvp(p->argv[0], p->argv);
@@ -249,7 +256,7 @@ void launchJob(Job* j, Bool foreground) {
 		infile = mypipe[0];
 	}
 	
-	formatJobInfo(j, "launched");
+	//formatJobInfo(j, "launched");
 
 	if (!shellInteractive)
 		waitForJob(j);
@@ -283,7 +290,7 @@ void doJobNotification (void) {
 		/* If all processes have completed, tell the user the job has
          completed and delete it from the list of active jobs.  */
 		if (jobCompleted(j)) {
-			formatJobInfo(j, "completed");
+			//formatJobInfo(j, "completed");
 			if (jlast)
 				jlast->next = jnext;
 			else
@@ -345,4 +352,5 @@ void initShell(void) {
 		// save terminal attributes
 		tcgetattr(0, &shellTmodes);
 	}
+	ignore = open("/dev/null", O_RDWR) CRITICAL;
 }

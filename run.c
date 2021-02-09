@@ -21,11 +21,11 @@ static Str* makeEnvCopy(Dict* env) {
 	DictNode* item = env->shead;
 	for (; item; (item=item->snext),envpPos++) {
 		Index len1 = strlen(item->key);
-		Index len2 = strlen(item->value);
+		Index len2 = strlen(*(Str*)item);
 		Str var = malloc(len1+1+len2+1);
 		memcpy(var, item->key, len1);
 		var[len1] = '=';
-		memcpy(var+len1+1, item->value, len2);
+		memcpy(var+len1+1, *(Str*)item, len2);
 		var[len1+1+len2] = '\0';
 		*envpPos = var;
 	}

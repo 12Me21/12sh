@@ -10,20 +10,18 @@
 // - flag to track which items are managed by dict
 //   problem: now other programs may have to free some stuff and nnnX
 
+#define Dget(dict, key, type) (*((type)*)Dict_get((dict), (key)))
+#define Dset(dict, key, type) (*((type)*)Dict_add((dict), (key)))
+#define Dgeto(dict, key, type) (*((type)*)(Dict_get((dict), (key))?:))
+
 Dict* Dict_new(BucketIndex size) {
-	Dict* new = malloc(sizeof(Dict));
-	
-	new->buckets = malloc(size*sizeof(DictNode*));
-	new->size = size;
-	new->items = 0;
-	BucketIndex i;
-	for (i=0; i<size; i++)
-		new->buckets[i] = NULL;
-	
-	new->shead = NULL;
-	new->stail = NULL;
-	
-	return new;
+	return ALLOCEI(Dict,
+		.size = size,
+		.items = 0,
+		.shead = NULL,
+		.stail = NULL,
+		.buckets = ALLOCEN(DictNode*, size),
+	);
 }
 
 void Dict_free(Dict* dict) {
@@ -31,7 +29,7 @@ void Dict_free(Dict* dict) {
 	for (node=dict->shead; node; ) {
 		//printf("freed %s\n", node->key);
 		free(node->key);
-		free(node->value);
+		free(node->_value);
 		DictNode* prev = node;
 		node = node->snext;
 		free(prev);
@@ -47,13 +45,36 @@ static BucketIndex hash(Dict* dict, Str str){
 	return hash % dict->size;
 }
 
-DictNode* Dict_get(Dict* tb, Str key) {
+void* Dict_get(Dict* tb, Str key) {
 	BucketIndex index = hash(tb, key);
 	DictNode* node = tb->buckets[index];
 	for (; node; node = node->bnext)
 		if (strcmp(node->key, key)==0)
 			return node;
 	return NULL;
+}
+
+DictNode* Dict_add(Dict* tb, Str key /*, Bool create, void* defl*/) {
+	BucketIndex index = hash(tb, key);
+	DictNode* node = tb->buckets[index];
+	for (; node; node = node->bnext)
+		if (strcmp(node->key, key)==0)
+			return node;
+	// Create new node
+	ALLOC(node);
+	tb->items++;
+	// Add to bucket
+	node->bnext = tb->buckets[index];
+	node->key = strdup(key) CRITICAL;
+	tb->buckets[index] = node;
+	// Add to end of sorted list
+	node->snext = NULL;
+	node->sprev = tb->stail;
+	if (!tb->shead) tb->shead = node;
+	if (tb->stail)	tb->stail->snext = node;
+	tb->stail = node;
+	
+	return node;
 }
 
 DictNode* Dict_remove(Dict* tb, Str key) {
@@ -76,29 +97,6 @@ DictNode* Dict_remove(Dict* tb, Str key) {
 			return node; //this pointer won't be valid anymore, but it's a useful truthy return value
 		}
 	return NULL;
-}
-
-DictNode* Dict_add(Dict* tb, Str key) {
-	BucketIndex index = hash(tb, key);
-	DictNode* node = tb->buckets[index];
-	for (; node; node = node->bnext)
-		if (strcmp(node->key, key)==0)
-			return node;
-	// Create new node
-	node = malloc(sizeof(DictNode));
-	tb->items++;
-	// Add to bucket
-	node->bnext = tb->buckets[index];
-	node->key = strdup(key);
-	tb->buckets[index] = node;
-	// Add to end of sorted list
-	node->snext = NULL;
-	node->sprev = tb->stail;
-	if (!tb->shead) tb->shead = node;
-	if (tb->stail)	tb->stail->snext = node;
-	tb->stail = node;
-	
-	return node;
 }
 
 // Initialize a dictionary from a list of nodes
