@@ -7,12 +7,36 @@
 
 extern Dict* env;
 
-void freeArgs(Str* args) {
-	for (; *args; args++)
-		free(*args);
+void* memdup(void* src, size_t len) {
+	void* n = malloc(len) CRITICAL;
+	memcpy(n, src, len);
+	return n;
 }
 
-Str* parseLine(Str line, Bool multi) {
+void Source_free(Source* source) {
+	if (!source)
+		return;
+	if (source->type == Source_FILE)
+		free(source->filepath);
+	else if (source->type == Source_STRING)
+		free(source->string);
+	Source_free(source->next);
+	free(source);
+}
+
+void CommandLine_free(CommandLine* cmd) {
+	if (!cmd)
+		return;
+	Str* args = cmd->argv;
+	for (; *args; args++)
+		free(*args);
+	free(cmd->argv);
+	Source_free(cmd->redirections);
+	CommandLine_free(cmd->next);
+	free(cmd);
+}
+
+CommandLine* parseLine(Str line) {
 	static Char temp[1024];
 	Char* pos = temp;
 	static Str args[256];
@@ -21,15 +45,50 @@ Str* parseLine(Str line, Bool multi) {
 	Char* varnamePos;
 	
 	Char quote = 0;
-	void finishArg() {
-		Str arg = strndup(temp, pos-temp);
-		*argpos++ = arg;
-		pos = temp;
-	}
+
 	Char c = *line;
 	Char scan() {
 		return (c = *++line);
 	}
+
+	void finishArg(Bool quoted) {
+		if (quoted || pos > temp) {
+			Str arg = strndup(temp, pos-temp);
+			*argpos++ = arg;
+		}
+		if (!quoted)
+			while (c == ' ')
+				scan();
+		pos = temp;
+	}
+	CommandLine* ALLOC(cmd);
+
+	void finishPart(Bool next) {
+		*argpos = NULL;
+		int items = argpos - args + 1;
+		Str* args2 = memdup(args, sizeof(Str*)*(items+1));
+		cmd->argv = args2;
+		cmd->command = args2[0];
+		argpos = args;
+		if (next) {
+			cmd->pipeout = true;
+			
+			CommandLine* ALLOC(cmd2);
+			cmd->next = cmd2;
+			cmd = cmd2;
+			cmd->next = NULL;
+			cmd->bg = false;
+			cmd->pipeout = false;
+			cmd->redirections = NULL;
+			cmd->argv = NULL;
+		} else {
+			cmd->next = NULL;
+		}
+	}
+	cmd->bg = false;
+	cmd->pipeout = false;
+	cmd->redirections = NULL;
+	CommandLine* firstCommand = cmd;
 	while (c) {
 		if (quote != '\'' && c == '$') {
 			varnamePos = varname;
@@ -73,23 +132,28 @@ Str* parseLine(Str line, Bool multi) {
 		} else switch (c) {
 			when('"' orwhen '\''):
 				quote = c;
+				scan();
 			when(' '):
-				if (multi) {
-					finishArg();
-					do {
-						scan();
-					} while (c == ' ');
-				} else {
-					*pos++ = c;
-					scan();
-				}
+				scan();
+				finishArg(false);
+			when('&'):
+				scan();
+				finishArg(false);
+				cmd->bg = true;
+			when('|'):
+				scan();
+				finishArg(false);
+				finishPart(true);
+			when('>'):
+				scan();
+				finishArg(false);
 			otherwise:
 				*pos++ = c;
 				scan();
 			}
 	}
  end:
-	finishArg();
-	*argpos = NULL;
-	return args;
+	finishArg(false);
+	finishPart(false);
+	return firstCommand;
 }

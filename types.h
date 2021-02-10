@@ -1,6 +1,4 @@
-#ifndef H_TYPES
-#define H_TYPES
-
+#pragma once
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,5 +27,3 @@ typedef int Status;
 #define ALLOCEI(type, init...) ({type* ALLOCI(temp, init); temp;})
 
 //#define ALLOCNI(name, size, init...) ALLOCN(name, size); *name = (typeof(*name)[size]){init}
-
-#endif

@@ -1,4 +1,6 @@
+#pragma once
 #include "types.h"
+#include "parse.h"
 
 typedef struct Process {
 	struct Process* next; // next process in pipeline
@@ -24,7 +26,7 @@ Pid shellPgid;
 extern Job* firstJob;
 Bool shellInteractive;
 
-Job* simpleJob(Str* argv);
+Job* simpleJob(CommandLine* cmd);
 void launchJob(Job* j, Bool foreground);
 void doJobNotification(void);
 void updateStatus(void);

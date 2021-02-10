@@ -56,8 +56,8 @@ Str updatePrompt(Dict* env) {
 	static Char prompt[1024];
 	Str promptPos = prompt;
 	Str ps1 = *(Str*)(Dict_get(env, "PS1")?:&"$ ");
-	Str* args = parseLine(ps1, false);
-	Str arg = args[0];
+	//Str* args = parseLine(ps1, false);
+	Str arg = ps1;//args[0];
 	for (; *arg; arg++) {
 		char c = *arg;
 		switch (c) {
@@ -69,7 +69,7 @@ Str updatePrompt(Dict* env) {
 		*promptPos++ = c;
 	}
 	*promptPos++ = '\0';
-	freeArgs(args);
+	//freeArgs(args);
 	
 	return prompt;
 }
@@ -108,40 +108,34 @@ int main(int argc, Str* argv) {
 		if (!line)
 			break;
 		add_history(line);
-		Str* args = parseLine(line, true);
-		Str* argEnd = args;
-		for (; *argEnd; argEnd++) {}
-		argEnd--;
-		if (args[0]) {
-			if (!strcmp(args[0], "exit")) {
+		CommandLine* cmd = parseLine(line);
+		Str command = cmd->command;
+		if (command) {
+			if (!strcmp(command, "exit")) {
 				break;
-			} else if (!strcmp(args[0], "set")) {
-				*(Str*)Dict_add(env, args[1]) = strdup(args[2]) CRITICAL;
-			} else if (!strcmp(args[0], "fg")) {
-				putJobInForeground(firstJob, true);
+			} else if (!strcmp(command, "set")) {
+				*(Str*)Dict_add(env, cmd->argv[1]) = strdup(cmd->argv[2]) CRITICAL;
+			} else if (!strcmp(command, "fg")) {
+				if (firstJob)
+					putJobInForeground(firstJob, true);
 			} else {
 				Str path;
-				int err = lookupCommand(args[0], *(Str*)(Dict_get(env, "PATH")?:&""), &path);
-				Bool bg = strcmp(*argEnd,"&")==0;
-				if (bg) {
-					free(*argEnd);
-					*argEnd = NULL;
-				}
+				int err = lookupCommand(command, *(Str*)(Dict_get(env, "PATH")?:&""), &path);
 				switch (err) {
 				when(0):;
-					Job* job = simpleJob(args);
-					launchJob(job, !bg);
+					Job* job = simpleJob(cmd);
+					launchJob(job, !cmd->bg);
 					//execute(path, args);
 				otherwise:
-					printf("Command '%s' not found\n", args[0]);
+					printf("Command '%s' not found\n", command);
 				}
 			}
 		}
+		CommandLine_free(cmd);
+		free(line);
 		signal(SIGCHLD, SIG_IGN);
 		doJobNotification();
 		signal(SIGCHLD, SIG_DFL);
-		free(line);
-		freeArgs(args);
 	}
 	printf("exit\n");
 	Dict_free(env);

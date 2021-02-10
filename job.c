@@ -14,25 +14,32 @@ Job* firstJob = NULL;
 Bool shellInteractive;
 Fd ignore;
 
-Job* simpleJob(Str* argv) {
-	Process* ALLOCI(process,
-		.next= NULL,
-		.argv= argv,
-		.pid= 0,
-		.completed = 0,
-		.stopped = 0,
-		.status = 0,
-	);
+Job* simpleJob(CommandLine* cmd) {
 	Job* ALLOCI(job,
 		.next = firstJob,
-		.command = strdup(argv[0]) CRITICAL,
+		.command = strdup(cmd->command) CRITICAL,
 		.pgid = 0,
 		.notified = false,
 		.stdin = 0,
 		.stdout = 1,
 		.stderr = 2,
-		.first_process = process,
 	);
+	Process* prev = NULL;
+	for (; cmd; cmd=cmd->next) {
+		Process* ALLOCI(process,
+			.next= NULL,
+			.argv= cmd->argv,
+			.pid= 0,
+			.completed = 0,
+			.stopped = 0,
+			.status = 0,
+		);
+		if (!prev)
+			job->first_process = process;
+		else
+			prev->next = process;
+		prev = process;
+	}
 	tcgetattr(0, &job->tmodes);
 	firstJob = job;
 	return job;

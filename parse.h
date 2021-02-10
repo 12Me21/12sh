@@ -1,3 +1,4 @@
+#pragma once
 #include "types.h"
 
 enum SourceType {Source_NONE, Source_FILE, Source_STRING};
@@ -11,6 +12,7 @@ typedef struct Source {
 	};
 	Fd fd;
 	mode_t mode;
+	struct Source* next;
 } Source;
 
 typedef struct CommandLine {
@@ -22,5 +24,5 @@ typedef struct CommandLine {
 	Source* redirections;
 } CommandLine;
 
-Str* parseLine(Str, Bool);
-void freeArgs(Str*);
+CommandLine* parseLine(Str);
+void CommandLine_free(CommandLine* cmd);
